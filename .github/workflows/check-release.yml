@@ -16,13 +16,27 @@ jobs:
 
       - name: Get latest release tag
         id: release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          TAG=$(curl -s https://api.github.com/repos/hagezi/dns-blocklists/releases/latest | jq -r .tag_name)
-          if [ -z "$TAG" ] || [ "$TAG" = "null" ]; then
-            echo "Failed to fetch release tag"
-            exit 1
-          fi
-          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+          for i in 1 2 3; do
+            RESPONSE=$(curl -s --max-time 30 -w "\n%{http_code}" \
+              -H "Authorization: Bearer $GH_TOKEN" \
+              -H "Accept: application/vnd.github+json" \
+              https://api.github.com/repos/hagezi/dns-blocklists/releases/latest)
+            HTTP_CODE=$(echo "$RESPONSE" | tail -n1)
+            BODY=$(echo "$RESPONSE" | sed '$d')
+            TAG=$(echo "$BODY" | jq -r .tag_name)
+            if [ -n "$TAG" ] && [ "$TAG" != "null" ]; then
+              echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+              echo "Got tag $TAG (HTTP $HTTP_CODE, attempt $i)"
+              exit 0
+            fi
+            echo "Attempt $i: HTTP $HTTP_CODE, body: $BODY"
+            sleep $((i * 5))
+          done
+          echo "All 3 attempts to fetch HaGeZi release tag failed"
+          exit 1
 
       - name: Restore cached release tag
         id: tag-cache
