@@ -1,8 +1,11 @@
 name: Check for new release
 
 on:
-  schedule:
-    - cron: "17 9 * * *" # Daily at 09:17 UTC (05:17 ET); off the hour to dodge GitHub scheduler load
+  # No schedule trigger on purpose: GitHub auto-disables SCHEDULED workflows in public repos
+  # after 60 days without repo activity (this one died 2026-06-27). Dispatch-only workflows are
+  # exempt, so a daily Windows scheduled task on the owner's PC dispatches this instead
+  # (C:/Users/DTuck/.claude/scheduled-tasks/hagezi-dispatch). The Flint 2 router's
+  # /etc/dashboard/dnswatch.sh pushes an alert if no successful run lands for 3 days.
   workflow_dispatch:
 
 permissions:
