@@ -2,7 +2,7 @@ name: Check for new release
 
 on:
   schedule:
-    - cron: "0 */2 * * *" # Every 2 hours
+    - cron: "17 9 * * *" # Daily at 09:17 UTC (05:17 ET); off the hour to dodge GitHub scheduler load
   workflow_dispatch:
 
 permissions:
