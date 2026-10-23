@@ -26,6 +26,8 @@ const (
 	MaxRetries            = 3
 	RetryDelay            = 1 * time.Second
 	FolderCreationDelay   = 2 * time.Second
+	FolderLookupAttempts  = 6               // Polls after creating a folder before giving up
+	FolderLookupDelay     = 2 * time.Second // Grows linearly: 2s, 4s, 6s, 8s, 10s (30s total)
 	HTTPTimeout           = 30 * time.Second
 	MaxConcurrentProfiles = 3 // Maximum number of profiles to sync concurrently
 )
@@ -392,15 +394,31 @@ func createFolder(profileID, name string, do, status int) (string, error) {
 		return "", fmt.Errorf("failed to create folder '%s': %w", name, err)
 	}
 
-	// Re-fetch the list and find the folder we just created
-	folders, err := listExistingFolders(profileID)
-	if err != nil {
-		return "", fmt.Errorf("failed to list folders after creation: %w", err)
+	// Re-fetch the list and find the folder we just created. The ControlD API is
+	// eventually consistent, so a new folder can be missing from the list for a
+	// few seconds; poll instead of failing (and never POST again, which would
+	// create a duplicate folder).
+	var folderID string
+	var lastErr error
+	for attempt := 0; attempt < FolderLookupAttempts; attempt++ {
+		if attempt > 0 {
+			wait := FolderLookupDelay * time.Duration(attempt)
+			log.Printf("Folder '%s' not visible yet (attempt %d/%d), waiting %v", name, attempt, FolderLookupAttempts, wait)
+			time.Sleep(wait)
+		}
+		folders, err := listExistingFolders(profileID)
+		if err != nil {
+			lastErr = fmt.Errorf("failed to list folders after creation: %w", err)
+			continue
+		}
+		if id, exists := folders[strings.TrimSpace(name)]; exists {
+			folderID = id
+			break
+		}
+		lastErr = fmt.Errorf("folder '%s' was not found after creation", name)
 	}
-
-	folderID, exists := folders[strings.TrimSpace(name)]
-	if !exists {
-		return "", fmt.Errorf("folder '%s' was not found after creation", name)
+	if folderID == "" {
+		return "", lastErr
 	}
 
 	log.Printf("Created folder '%s' (ID %s)", name, folderID)
